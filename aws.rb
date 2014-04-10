@@ -36,6 +36,7 @@ class AwsDaemon
         end
 
       end
+      sleep(10)
     end
 
 
