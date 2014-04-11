@@ -3,12 +3,13 @@ require "bundler/setup"
 require "aws-sdk"
 require 'pp'
 require "httparty"
-
+require "csv"
+require "pry"
+require "tempfile"
 
 @access_key = ARGV[0]
 @secret_key = ARGV[1]
 @port = ARGV[1]
-
 
 class AwsDaemon
 
@@ -19,17 +20,45 @@ class AwsDaemon
     logger = Logger.new("log.txt")
 
     while (true)
+
       source_bucket.objects.each do |o|
-        if !(o.key =~ /.*[sign]/)
-           o.copy_to(o.key,{:bucket => stage_bucket})
+        key = o.key
+        if !(key =~ /.*sign/)
+           o.copy_to(key,{:bucket => stage_bucket})
            options = {
                :body => {
-                   :filename => o.key,
+                   :filename => key,
                }
            }
            begin
             HTTParty.post("http://localhost:#{port}/file_upload", options)
             o.delete
+            staged_o = stage_bucket.objects[key]
+            file_headers = nil
+            begin
+              file = Tempfile.new("staged")
+              staged_o.read do |chunk|
+                file.write(chunk)
+              end
+              file.flush
+              CSV.foreach(file.path, :return_headers => true, :headers => true) do |row|
+                if row.header_row?
+                  file_headers = row.headers
+                else
+                  break
+                end
+              end
+            ensure
+              file.close
+            end
+            logger.info "#{key} -- keys #{file_headers.join(", ")}"
+            HTTParty.post("http://localhost:#{port}/file_columns", {
+              :body => {
+                :columns => file_headers.map {|name| {
+                  :name => name
+                }}
+              }
+            })
            rescue => e
             logger.error e.message
            end
