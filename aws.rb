@@ -20,9 +20,10 @@ class AwsDaemon
     logger = Logger.new("log.txt")
 
     while (true)
-
+      puts "again"
       source_bucket.objects.each do |o|
         key = o.key
+        puts key
         if !(key =~ /.*sign/)
            o.copy_to(key,{:bucket => stage_bucket})
            options = {
@@ -31,7 +32,8 @@ class AwsDaemon
                }
            }
            begin
-            HTTParty.post("http://localhost:#{port}/file_upload", options)
+            uuid = key.split('/').first
+            HTTParty.post("http://localhost:#{port}/file_upload/#{uuid}", options)
             o.delete
             staged_o = stage_bucket.objects[key]
             file_headers = nil
@@ -52,11 +54,14 @@ class AwsDaemon
               file.close
             end
             logger.info "#{key} -- keys #{file_headers.join(", ")}"
-            HTTParty.post("http://localhost:#{port}/file_columns", {
+            HTTParty.post("http://localhost:#{port}/file_columns/#{uuid}", {
               :body => {
-                :columns => file_headers.map {|name| {
-                  :name => name
-                }}
+                :filename => key,
+                :columns => file_headers.map {|name| 
+                  {
+                    :name => name
+                  }
+                }
               }
             })
            rescue => e
@@ -65,7 +70,7 @@ class AwsDaemon
         end
 
       end
-      sleep(10)
+      sleep(3)
     end
 
 
